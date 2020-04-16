@@ -66,7 +66,7 @@
 
 /* macro to erase all color bits then sets only the current white bit */
 #define makewhite(g,x)	\
- (x->marked = cast_byte((x->marked & maskcolors) | luaC_white(g)))
+ (x->marked = cast_byte((x->marked & maskcolors) | (x->marked & bitmask(SHAREBIT)) | luaC_white(g)))
 
 #define white2gray(x)	resetbits(x->marked, WHITEBITS)
 #define black2gray(x)	resetbit(x->marked, BLACKBIT)
@@ -266,6 +266,8 @@ GCObject *luaC_newobj (lua_State *L, int tt, size_t sz) {
 ** to avoid barriers, as their values will be revisited by the thread.)
 */
 static void reallymarkobject (global_State *g, GCObject *o) {
+  if (isshared(o))
+    return;
   white2gray(o);
   switch (o->tt) {
     case LUA_VSHRSTR:
@@ -755,7 +757,7 @@ static void freeobj (lua_State *L, GCObject *o) {
 static GCObject **sweeplist (lua_State *L, GCObject **p, int countin,
                              int *countout) {
   global_State *g = G(L);
-  int ow = otherwhite(g);
+  int ow = otherwhite(g) | bitmask(SHAREBIT);  /* shared object never dead */
   int i;
   int white = luaC_white(g);  /* current white */
   for (i = 0; *p != NULL && i < countin; i++) {
@@ -766,7 +768,7 @@ static GCObject **sweeplist (lua_State *L, GCObject **p, int countin,
       freeobj(L, curr);  /* erase 'curr' */
     }
     else {  /* change mark to 'white' */
-      curr->marked = cast_byte((marked & maskcolors) | white);
+      curr->marked = cast_byte((marked & maskcolors) | (marked & bitmask(SHAREBIT)) | white);
       p = &curr->next;  /* go to next element */
     }
   }
